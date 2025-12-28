@@ -1,0 +1,186 @@
+#!/usr/bin/env python3
+import re
+import sys
+
+NUMBER_RE = re.compile(r'^\d+(\.\d+)?')
+
+
+def format_num(n):
+    # n may be a float or a string convertible to float
+    try:
+        val = float(n)
+    except:
+        return str(n)
+    if val.is_integer():
+        return str(int(val))
+    return str(val)
+
+
+def tokenize(expr):
+    expr = expr.strip()
+    tokens = []
+    i = 0
+    while i < len(expr):
+        c = expr[i]
+        if c.isspace():
+            i += 1
+            continue
+        if c in '()+-*/^':
+            # handle unary + and -
+            if c == '-' and (not tokens or tokens[-1] in ('(', '+', '-', '*', '/', '^')):
+                # unary minus before parenthesis -> convert to 0 - ( ... )
+                if i + 1 < len(expr) and expr[i+1] == '(':
+                    tokens.append('0')
+                    tokens.append('-')
+                    i += 1
+                    continue
+                # unary minus before number -> parse negative number
+                j = i + 1
+                m = re.match(r'\d+(\.\d+)?', expr[j:])
+                if m:
+                    num = '-' + m.group(0)
+                    tokens.append(format_num(num))
+                    i = j + len(m.group(0))
+                    continue
+                else:
+                    # treat as operator if no number follows
+                    tokens.append('-')
+                    i += 1
+                    continue
+            if c == '+' and (not tokens or tokens[-1] in ('(', '+', '-', '*', '/', '^')):
+                # unary plus -> skip
+                i += 1
+                continue
+            tokens.append(c)
+            i += 1
+            continue
+        # number
+        if c.isdigit() or c == '.':
+            m = NUMBER_RE.match(expr[i:])
+            if not m:
+                print("Invalid number at:", expr[i:])
+                sys.exit(1)
+            tokens.append(format_num(m.group(0)))
+            i += len(m.group(0))
+            continue
+        print(f"Unexpected character: {c}")
+        sys.exit(1)
+    return tokens
+
+
+def find_matching_paren(tokens, start):
+    depth = 0
+    for i in range(start, len(tokens)):
+        if tokens[i] == '(':
+            depth += 1
+        elif tokens[i] == ')':
+            depth -= 1
+            if depth == 0:
+                return i
+    return -1
+
+
+def compute_one_operation(tokens):
+    # precedence: ^ (right-assoc) highest, then * and / (left-to-right), then + and - (left-to-right)
+    op_idx = None
+    # handle '^' right-associative: pick the rightmost '^'
+    for i in range(len(tokens)-1, -1, -1):
+        if tokens[i] == '^':
+            op_idx = i
+            break
+    if op_idx is None:
+        # left-to-right * or /
+        for i, t in enumerate(tokens):
+            if t in ('*', '/'):
+                op_idx = i
+                break
+    if op_idx is None:
+        # left-to-right + or -
+        for i, t in enumerate(tokens):
+            if t in ('+', '-'):
+                op_idx = i
+                break
+    if op_idx is None:
+        return tokens  # nothing to do
+    try:
+        left = float(tokens[op_idx-1])
+        right = float(tokens[op_idx+1])
+    except Exception:
+        print("Malformed expression near:", tokens)
+        sys.exit(1)
+    op = tokens[op_idx]
+    if op == '*':
+        res = left * right
+    elif op == '/':
+        if right == 0:
+            print("Error: division by zero")
+            sys.exit(1)
+        res = left / right
+    elif op == '+':
+        res = left + right
+    elif op == '-':
+        res = left - right
+    elif op == '^':
+        # use pow for exponentiation
+        res = pow(left, right)
+    else:
+        print("Unknown operator:", op)
+        sys.exit(1)
+    new_tokens = tokens[:op_idx-1] + [format_num(res)] + tokens[op_idx+2:]
+    return new_tokens
+
+
+def evaluate_tokens(tokens, print_steps=True):
+    # reduce parentheses first
+    while '(' in tokens:
+        # find innermost '('
+        last_open = None
+        for i, t in enumerate(tokens):
+            if t == '(':
+                last_open = i
+        if last_open is None:
+            break
+        close = find_matching_paren(tokens, last_open)
+        if close == -1:
+            print("Error: mismatched parentheses")
+            sys.exit(1)
+        # evaluate the sub-expression
+        sub = tokens[last_open+1:close]
+        # reduce sub until single token
+        while len(sub) > 1:
+            sub = compute_one_operation(sub)
+        # replace ( ... ) with result
+        tokens = tokens[:last_open] + [sub[0]] + tokens[close+1:]
+        if print_steps:
+            print("=" + ''.join(tokens) + "=" if len(tokens)
+                  > 1 else format_num(tokens[0]))
+    # reduce remaining operations
+    while len(tokens) > 1:
+        tokens = compute_one_operation(tokens)
+        if print_steps:
+            if len(tokens) > 1:
+                print("=" + ''.join(tokens) + "=")
+            else:
+                # final result printed by caller
+                pass
+    return tokens[0]
+
+
+def main():
+    try:
+        expr = input("Enter expression: ").strip()
+    except EOFError:
+        return
+    if not expr:
+        print("No expression entered.")
+        return
+    tokens = tokenize(expr)
+    # Print initial expression with '=' as in your example
+    print(''.join(tokens) + "=")
+    # evaluate and print intermediate steps
+    result = evaluate_tokens(tokens, print_steps=True)
+    print(format_num(result))
+
+
+if __name__ == "__main__":
+    main()
