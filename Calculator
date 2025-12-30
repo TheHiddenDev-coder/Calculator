@@ -9,9 +9,7 @@ def format_num(n):
         val = float(n)
     except:
         return str(n)
-    if val.is_integer():
-        return str(int(val))
-    return str(val)
+    return str(int(val)) if val.is_integer() else str(val)
 
 def tokenize(expr):
     expr = expr.strip()
@@ -23,42 +21,36 @@ def tokenize(expr):
             i += 1
             continue
         if c in '()+-*/^':
-            # handle unary + and -
+            # Unary minus
             if c == '-' and (not tokens or tokens[-1] in ('(', '+', '-', '*', '/', '^')):
-                # unary minus before parenthesis
                 if i + 1 < len(expr) and expr[i+1] == '(':
-                    tokens.append('0')
-                    tokens.append('-')
+                    tokens.extend(['0', '-'])
                     i += 1
                     continue
-                # unary minus before number
+                # Unary minus before number
                 j = i + 1
                 m = re.match(r'\d+(\.\d+)?', expr[j:])
                 if m:
-                    num = '-' + m.group(0)
-                    tokens.append(format_num(num))
+                    tokens.append('-' + m.group(0))
                     i = j + len(m.group(0))
                     continue
-                else:
-                    tokens.append('-')
-                    i += 1
-                    continue
+                tokens.append('-')
+                i += 1
+                continue
+            # Unary plus
             if c == '+' and (not tokens or tokens[-1] in ('(', '+', '-', '*', '/', '^')):
-                i += 1  # unary plus -> skip
+                i += 1
                 continue
             tokens.append(c)
             i += 1
             continue
-        # number
-        if c.isdigit() or c == '.':
-            m = NUMBER_RE.match(expr[i:])
-            if not m:
-                print("Invalid number at:", expr[i:])
-                sys.exit(1)
-            tokens.append(format_num(m.group(0)))
+        # Number
+        m = re.match(r'\d+(\.\d+)?', expr[i:])
+        if m:
+            tokens.append(m.group(0))
             i += len(m.group(0))
             continue
-        print(f"Unexpected character: {c}")
+        print("Invalid character:", c)
         sys.exit(1)
     return tokens
 
@@ -74,8 +66,9 @@ def find_matching_paren(tokens, start):
     return -1
 
 def compute_one_operation(tokens):
+    # Operator precedence: ^ > * / > + -
     op_idx = None
-    # handle '^' right-associative
+    # Right-associative '^'
     for i in range(len(tokens)-1, -1, -1):
         if tokens[i] == '^':
             op_idx = i
@@ -92,31 +85,23 @@ def compute_one_operation(tokens):
                 break
     if op_idx is None:
         return tokens
-    try:
-        left = float(tokens[op_idx-1])
-        right = float(tokens[op_idx+1])
-    except Exception:
-        print("Malformed expression near:", tokens)
-        sys.exit(1)
+    left = float(tokens[op_idx-1])
+    right = float(tokens[op_idx+1])
     op = tokens[op_idx]
-    if op == '*':
-        res = left * right
-    elif op == '/':
-        if right == 0:
-            print("Error: division by zero")
-            sys.exit(1)
-        res = left / right
-    elif op == '+':
+    if op == '+':
         res = left + right
     elif op == '-':
         res = left - right
+    elif op == '*':
+        res = left * right
+    elif op == '/':
+        res = left / right
     elif op == '^':
         res = pow(left, right)
     else:
         print("Unknown operator:", op)
         sys.exit(1)
-    new_tokens = tokens[:op_idx-1] + [format_num(res)] + tokens[op_idx+2:]
-    return new_tokens
+    return tokens[:op_idx-1] + [format_num(res)] + tokens[op_idx+2:]
 
 def evaluate_tokens(tokens, print_steps=True):
     while '(' in tokens:
@@ -124,8 +109,6 @@ def evaluate_tokens(tokens, print_steps=True):
         for i, t in enumerate(tokens):
             if t == '(':
                 last_open = i
-        if last_open is None:
-            break
         close = find_matching_paren(tokens, last_open)
         if close == -1:
             print("Error: mismatched parentheses")
@@ -138,8 +121,8 @@ def evaluate_tokens(tokens, print_steps=True):
             print("=" + ''.join(tokens) + "=" if len(tokens) > 1 else format_num(tokens[0]))
     while len(tokens) > 1:
         tokens = compute_one_operation(tokens)
-        if print_steps and len(tokens) > 1:
-            print("=" + ''.join(tokens) + "=")
+        if print_steps:
+            print("=" + ''.join(tokens) + "=" if len(tokens) > 1 else format_num(tokens[0]))
     return tokens[0]
 
 def main():
@@ -148,12 +131,12 @@ def main():
             expr = input("Enter expression (or 'no' to quit): ").strip()
         except EOFError:
             break
-        if expr.lower() == "no":
-            print("Exiting...")
-            break
         if not expr:
             print("No expression entered.")
             continue
+        if expr.lower() == "no":
+            print("Exiting...")
+            break
         tokens = tokenize(expr)
         print(''.join(tokens) + "=")
         result = evaluate_tokens(tokens, print_steps=True)
@@ -161,4 +144,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
